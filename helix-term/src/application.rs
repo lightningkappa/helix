@@ -726,14 +726,18 @@ impl Application {
             #[cfg(not(windows))]
             termina::Event::Csi(csi::Csi::Mode(csi::Mode::ReportTheme(mode))) => {
                 log::warn!("report-theme: {:?}", mode);
-                self.theme_mode = Some(mode.into());
-                Self::load_configured_theme(
-                    &mut self.editor,
-                    &self.config.load(),
-                    &mut self.terminal,
-                    self.theme_mode,
-                );
-                true
+                if let Some(theme::Config::Adaptive { .. }) = self.config.load().theme {
+                    self.theme_mode = Some(mode.into());
+                    Self::load_configured_theme(
+                        &mut self.editor,
+                        &self.config.load(),
+                        &mut self.terminal,
+                        self.theme_mode,
+                    );
+                    true
+                } else {
+                    false
+                }
             }
             #[cfg(windows)]
             TerminalEvent::Resize(width, height) => {
