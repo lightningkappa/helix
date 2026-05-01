@@ -1,1 +1,3 @@
 2026-05-01T08:18:25.313 helix_term::application [WARN] report-theme: Dark | app.theme-mode: Some(Dark)
+2026-05-01T08:40:52.946 helix_lsp::transport [ERROR] rust-analyzer <- ServerError(-32802): server cancelled the request
+2026-05-01T08:59:04.991 helix_lsp::transport [ERROR] rust-analyzer <- ServerError(-32802): server cancelled the request
