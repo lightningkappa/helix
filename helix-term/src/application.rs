@@ -471,8 +471,7 @@ impl Application {
             || config.editor.true_color
             || crate::true_color();
 
-        log::warn!("config-theme: {:?}", config.theme);
-        log::warn!("editor-theme: {:?}", editor.theme.name());
+        log::warn!("editor-theme = {:?}", editor.theme.name());
         let theme = config
             .theme
             .as_ref()
@@ -497,7 +496,8 @@ impl Application {
                         }
                         colors_ok
                     })
-            }).unwrap_or_else(|| editor.theme_loader.default_theme(true_color));
+            })
+            .unwrap_or_else(|| editor.theme_loader.default_theme(true_color));
         let _ = editor.set_theme(theme);
     }
 
@@ -725,14 +725,14 @@ impl Application {
             }) => false,
             #[cfg(not(windows))]
             termina::Event::Csi(csi::Csi::Mode(csi::Mode::ReportTheme(mode))) => {
-                log::warn!("termina-event: report-theme: {:?}", mode);
+                log::warn!("report-theme: {:?}", mode);
                 self.theme_mode = Some(mode.into());
-                // Self::load_configured_theme(
-                //     &mut self.editor,
-                //     &self.config.load(),
-                //     &mut self.terminal,
-                //     self.theme_mode,
-                // );
+                Self::load_configured_theme(
+                    &mut self.editor,
+                    &self.config.load(),
+                    &mut self.terminal,
+                    self.theme_mode,
+                );
                 true
             }
             #[cfg(windows)]
