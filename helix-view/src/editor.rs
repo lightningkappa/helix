@@ -769,6 +769,9 @@ pub enum StatusLineElement {
     /// A summary of the number of errors and warnings
     Diagnostics,
 
+    /// symbol path of the current symbol
+    BreadCrumbs,
+
     /// A summary of the number of errors and warnings on file and workspace
     WorkspaceDiagnostics,
 

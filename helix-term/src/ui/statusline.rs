@@ -144,6 +144,7 @@ where
         helix_view::editor::StatusLineElement::FileIndentStyle => render_file_indent_style,
         helix_view::editor::StatusLineElement::FileType => render_file_type,
         helix_view::editor::StatusLineElement::Diagnostics => render_diagnostics,
+        helix_view::editor::StatusLineElement::BreadCrumbs => render_breadcrumbs,
         helix_view::editor::StatusLineElement::WorkspaceDiagnostics => render_workspace_diagnostics,
         helix_view::editor::StatusLineElement::Selections => render_selections,
         helix_view::editor::StatusLineElement::PrimarySelectionLength => {
@@ -328,6 +329,13 @@ where
     }
 }
 
+fn render_breadcrumbs<'a, F>(context: &mut RenderContext<'a>, write: F)
+where
+    F: Fn(&mut RenderContext<'a>, Span<'a>) + Copy,
+{
+    write(context, format!("(๑•᎑•๑)").into());
+}
+
 fn render_selections<'a, F>(context: &mut RenderContext<'a>, write: F)
 where
     F: Fn(&mut RenderContext<'a>, Span<'a>) + Copy,
@@ -373,7 +381,7 @@ where
     let position = get_position(context);
     write(
         context,
-        format!(" {}:{} ", position.row + 1, position.col + 1).into(),
+        format!(" {}:{} ", position.col + 1, position.row + 1).into(),
     );
 }
 
