@@ -333,7 +333,388 @@ fn render_breadcrumbs<'a, F>(context: &mut RenderContext<'a>, write: F)
 where
     F: Fn(&mut RenderContext<'a>, Span<'a>) + Copy,
 {
-    write(context, format!("(๑•᎑•๑)").into());
+    let doc = context.doc;
+    let Position { col, row } = get_position(context);
+    // log::warn!("position: col {}, row {}", col, row);
+
+    // if let Some(lsp_client) = doc
+    //     .language_servers_with_feature(LanguageServerFeature::DocumentSymbols)
+    //     .next()
+    // {
+    //     let symbols = lsp_client.document_symbols(doc.identifier());
+    //     log::warn!("lsp symbols");
+    // } else if doc.syntax().is_some() {
+    //     let symbols = syntax_symbols(context);
+    //     log::warn!("breadcrumbs: {:?}", symbols);
+    // }
+
+    if doc.syntax().is_some() {
+        let mut symbols = syntax_symbols(context);
+        remove_irrelevant_tags(&mut symbols, row);
+        // log::warn!(">S {:#?}\nS {:#?}<", symbols.first(), symbols.last());
+
+        // write(context, format!("c{}r{}", col, row).into());
+        write(context, format_breadcrumbs(&symbols).into());
+    }
+
+    // write(context, format!("(๑•᎑•๑)").into());
+}
+
+fn remove_irrelevant_tags<'a>(tags: &mut Vec<Tag>, row: usize) {
+    let len = tags.len() - 1;
+    for idx in 0..tags.len() {
+        let idx = len - idx;
+        let start = tags[idx].start_line;
+        let end = tags[idx].end_line;
+        log::warn!(
+            "idx = {}, start = {}, end = {}, row = {}, len = {}",
+            idx,
+            start,
+            end,
+            row,
+            len
+        );
+        if start > row || end < row {
+            tags.remove(idx);
+        }
+    }
+}
+
+fn format_breadcrumbs(tags: &[Tag]) -> String {
+    if tags.is_empty() {
+        return "".into();
+    }
+
+    let mut bc: String = "".into();
+    let mut countdown = tags.len() - 1;
+    for tag in tags {
+        if countdown == 0 {
+            break;
+        }
+        bc.push_str(tag.kind.as_icon());
+        bc.push_str(tag.name.as_str());
+        bc.push_str(" › ");
+        countdown -= 1;
+    }
+    let Some(tag) = tags.last() else {
+        unreachable!();
+    };
+    bc.push_str(tag.kind.as_icon());
+    bc.push_str(tag.name.as_str());
+
+    bc
+}
+
+pub fn syntax_symbols(ctx: &mut RenderContext) -> Vec<Tag> {
+    let doc = doc!(ctx.editor);
+    let Some(syntax) = doc.syntax() else {
+        // ctx.editor
+        //     .set_error("Syntax tree is not available on this buffer");
+        panic!("already checked syntax is some");
+    };
+    let doc_id = ctx.doc.id();
+    let text = ctx.doc.text().slice(..);
+    let loader = ctx.editor.syn_loader.load();
+
+    tags_iter(
+        syntax,
+        &loader,
+        text,
+        UriOrDocumentId::Id(ctx.doc.id()),
+        None,
+    )
+    .collect()
+}
+use crate::ui::picker::PathOrId;
+use helix_core::{RopeSlice, Syntax};
+use helix_view::DocumentId;
+
+// NOTE: Uri is cheap to clone and DocumentId is Copy
+#[derive(Debug, Clone)]
+enum UriOrDocumentId {
+    Uri(Uri),
+    Id(DocumentId),
+}
+
+impl UriOrDocumentId {
+    fn path_or_id(&self) -> Option<PathOrId<'_>> {
+        match self {
+            Self::Id(id) => Some(PathOrId::Id(*id)),
+            Self::Uri(uri) => uri.as_path().map(PathOrId::Path),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TagKind {
+    Class,
+    Constant,
+    Enum,
+    Field,
+    Function,
+    Interface,
+    Macro,
+    Module,
+    Section,
+    Struct,
+    Type,
+}
+impl TagKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Class => "class",
+            Self::Constant => "constant",
+            Self::Enum => "enum",
+            Self::Field => "field",
+            Self::Function => "function",
+            Self::Interface => "interface",
+            Self::Macro => "macro",
+            Self::Module => "module",
+            Self::Section => "section",
+            Self::Struct => "struct",
+            Self::Type => "type",
+        }
+    }
+
+    fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "class" => Some(TagKind::Class),
+            "constant" => Some(TagKind::Constant),
+            "enum" => Some(TagKind::Enum),
+            "field" => Some(TagKind::Field),
+            "function" => Some(TagKind::Function),
+            "interface" => Some(TagKind::Interface),
+            "macro" => Some(TagKind::Macro),
+            "module" => Some(TagKind::Module),
+            "section" => Some(TagKind::Section),
+            "struct" => Some(TagKind::Struct),
+            "type" => Some(TagKind::Type),
+            _ => None,
+        }
+    }
+
+    pub fn as_icon(&self) -> &str {
+        match self {
+            // Self::File => " ",
+            Self::Module => "⚝ ",
+            // Self::Namespace => " ",
+            Self::Section => " ",
+            Self::Class => " ",
+            // Self::Method => " ",
+            // Self::Property => " ",
+            Self::Field => " ",
+            // Self::Constructor => " ",
+            Self::Enum => " ",
+            Self::Interface => " ",
+            Self::Function => " ",
+            // Self::Variable => " ",
+            Self::Constant => " ",
+            // Self::String => " ",
+            Self::Macro => " ",
+            // Self::Boolean => " ",
+            // Self::Array => " ",
+            // Self::Object => " ",
+            // Self::Key => " ",
+            // Self::Null => " ",
+            // Self::EnumMember => " ",
+            Self::Struct => " ",
+            // Self::Event => " ",
+            // Self::Operator => " ",
+            Self::Type => " ",
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Tag {
+    kind: TagKind,
+    name: String,
+    start: usize,
+    end: usize,
+    start_line: usize,
+    end_line: usize,
+    doc: UriOrDocumentId,
+}
+
+use helix_core::syntax::{Loader, QueryMatchIterEvent};
+use helix_stdx::rope::{self, RopeSliceExt};
+use std::iter;
+fn tags_iter<'a>(
+    syntax: &'a Syntax,
+    loader: &'a Loader,
+    text: RopeSlice<'a>,
+    doc: UriOrDocumentId,
+    pattern: Option<&'a rope::Regex>,
+) -> impl Iterator<Item = Tag> + 'a {
+    let mut tags_iter = syntax.tags(text, loader, ..);
+
+    iter::from_fn(move || loop {
+        let QueryMatchIterEvent::Match(mat) = tags_iter.next()? else {
+            continue;
+        };
+        let query = &loader
+            .tag_query(tags_iter.current_language())
+            .expect("must have a tags query to emit matches")
+            .query;
+
+        // Find the @definition.* and optional @name captures in this match.
+        let mut def_capture = None::<(TagKind, std::ops::Range<u32>)>;
+        let mut name_range = None::<std::ops::Range<u32>>;
+        let name_capture = query.get_capture("name");
+
+        for node in mat.nodes.iter() {
+            let capture_name = query.capture_name(node.capture);
+            if let Some(kind) = capture_name
+                .strip_prefix("definition.")
+                .and_then(TagKind::from_name)
+            {
+                def_capture = Some((kind, node.node.byte_range()));
+            } else if name_capture == Some(node.capture) {
+                name_range = Some(node.node.byte_range());
+            }
+        }
+
+        let Some((kind, def_byte_range)) = def_capture else {
+            continue;
+        };
+        let name_byte_range = name_range.unwrap_or_else(|| def_byte_range.clone());
+
+        if pattern.is_some_and(|re| {
+            !re.is_match(
+                text.regex_input_at_bytes(
+                    name_byte_range.start as usize..name_byte_range.end as usize,
+                ),
+            )
+        }) {
+            continue;
+        }
+
+        let name_start = text.byte_to_char(name_byte_range.start as usize);
+        let name_end = text.byte_to_char(name_byte_range.end as usize);
+        let def_start = text.byte_to_char(def_byte_range.start as usize);
+        let def_end = text.byte_to_char(def_byte_range.end as usize);
+
+        return Some(Tag {
+            kind,
+            name: text.slice(name_start..name_end).to_string(),
+            start: def_start,
+            end: def_end,
+            start_line: text.char_to_line(def_start),
+            end_line: text.char_to_line(def_end),
+            doc: doc.clone(),
+        });
+    })
+}
+
+use futures_util::{stream::FuturesUnordered, FutureExt};
+use helix_core::{
+    syntax::config::{LanguageServerFeature, LanguageServerFeatures},
+    Uri,
+};
+use helix_lsp::{lsp, OffsetEncoding};
+use std::collections::HashSet;
+use tokio_stream::StreamExt;
+
+struct SymbolInformationItem {
+    location: Location,
+    symbol: lsp::SymbolInformation,
+}
+/// A wrapper around `lsp::Location` that swaps out the LSP URI for `helix_core::Uri` and adds
+/// the server's  offset encoding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Location {
+    uri: Uri,
+    range: lsp::Range,
+    offset_encoding: OffsetEncoding,
+}
+
+fn get_lsp_symbols(context: &mut RenderContext) {
+    fn nested_to_flat(
+        list: &mut Vec<SymbolInformationItem>,
+        file: &lsp::TextDocumentIdentifier,
+        uri: &Uri,
+        symbol: lsp::DocumentSymbol,
+        offset_encoding: OffsetEncoding,
+    ) {
+        #[allow(deprecated)]
+        list.push(SymbolInformationItem {
+            symbol: lsp::SymbolInformation {
+                name: symbol.name,
+                kind: symbol.kind,
+                tags: symbol.tags,
+                deprecated: symbol.deprecated,
+                location: lsp::Location::new(file.uri.clone(), symbol.selection_range),
+                container_name: None,
+            },
+            location: Location {
+                uri: uri.clone(),
+                range: symbol.selection_range,
+                offset_encoding,
+            },
+        });
+        for child in symbol.children.into_iter().flatten() {
+            nested_to_flat(list, file, uri, child, offset_encoding);
+        }
+    }
+    let doc = context.doc;
+
+    let mut seen_language_servers = HashSet::new();
+
+    let mut futures: FuturesUnordered<_> = doc
+        .language_servers_with_feature(LanguageServerFeature::DocumentSymbols)
+        .filter(|ls| seen_language_servers.insert(ls.id()))
+        .map(|language_server| {
+            let request = language_server.document_symbols(doc.identifier()).unwrap();
+            let offset_encoding = language_server.offset_encoding();
+            let doc_id = doc.identifier();
+            let doc_uri = doc
+                .uri()
+                .expect("docs with active language servers must be backed by paths");
+
+            async move {
+                let symbols = match request.await? {
+                    Some(symbols) => symbols,
+                    None => return anyhow::Ok(vec![]),
+                };
+                // lsp has two ways to represent symbols (flat/nested)
+                // convert the nested variant to flat, so that we have a homogeneous list
+                let symbols = match symbols {
+                    lsp::DocumentSymbolResponse::Flat(symbols) => symbols
+                        .into_iter()
+                        .map(|symbol| SymbolInformationItem {
+                            location: Location {
+                                uri: doc_uri.clone(),
+                                range: symbol.location.range,
+                                offset_encoding,
+                            },
+                            symbol,
+                        })
+                        .collect(),
+                    lsp::DocumentSymbolResponse::Nested(symbols) => {
+                        let mut flat_symbols = Vec::new();
+                        for symbol in symbols {
+                            nested_to_flat(
+                                &mut flat_symbols,
+                                &doc_id,
+                                &doc_uri,
+                                symbol,
+                                offset_encoding,
+                            )
+                        }
+                        flat_symbols
+                    }
+                };
+                Ok(symbols)
+            }
+        })
+        .collect();
+
+    // if futures.is_empty() {
+    //     context
+    //         .editor
+    //         .set_error("No configured language server supports document symbols");
+    //     return;
+    // }
 }
 
 fn render_selections<'a, F>(context: &mut RenderContext<'a>, write: F)
